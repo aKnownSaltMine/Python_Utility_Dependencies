@@ -6,10 +6,13 @@ import sys
 from setup import setup
 
 class download_profile:
-    def __init__(self, url, file_name, prompt) -> None:
+    def __init__(self, url: str, file_name: str,  **kwargs) -> None:
         self.url = url
         self.file_name = file_name
-        self.prompt = prompt
+        self.prompt = kwargs.get('prompt', None)
+        self.export_type = kwargs.get('export_type','excel')
+        self.download_folder = kwargs.get('download_folder', os.path.join(Path.home(), 'Downloads')) 
+        self.timeout=kwargs.get('timeout', 120)
 
 def fix_makepy():
     from shutil import rmtree, copytree
@@ -27,7 +30,7 @@ def fix_makepy():
         if os.path.exists(gen_py_path):
             rmtree(gen_py_path)
         check_call([executable, '-m', 'win32com.client.makepy', 'Excel.Application'])
-    except:
+    except AttributeError:
         backup_path = r"" # Network Share drive
         gen_py_path = os.path.join(
             Path.home(), 'AppData', 'Local', 'Temp', 'gen_py')
@@ -54,73 +57,11 @@ def column_cleaner(df):
     # print('New Column Names:')
     # [print(x) for x in new_column_names]
 
+    rename_dict = {key: value for key, value in zip(df.columns, new_column_names)}
     # renaming the headers
-    df.columns = new_column_names
+    df = df.reindex(columns=rename_dict)
     return df
 
-def correct_export_options(driver: WebDriver):
-    # import dependencies
-    from time import sleep
-    from .setup import setup
-
-    # import dependencies
-    try:
-        from selenium.webdriver.common.action_chains import ActionChains
-        from selenium.webdriver.common.by import By
-    except ImportError: 
-        setup()
-        from selenium.webdriver.common.action_chains import ActionChains
-        from selenium.webdriver.common.by import By
-
-
-    options_url = "" # Microstrategy URL
-    export_url = '' # Microstrategy URL
-    driver.get(options_url)
-    sleep(3)
-    driver.get(export_url)
-
-    export_option_xpath = '//*[@id="exportShowOptions"]'
-    export_element = driver.find_element(By.XPATH, export_option_xpath)
-    ActionChains(driver).move_to_element(export_element).perform() # type: ignore
-
-    checked_export = export_element.is_selected()
-
-    if checked_export is False:
-        print('Correcting Export options')
-        export_element.click()
-        driver.find_element(By.XPATH, '//*[@id="25003"]').click()
-
-def restore_export_options(driver: WebDriver):
-    # import dependencies
-    from time import sleep
-    from .setup import setup
-
-    # import dependencies
-    try:
-        from selenium.webdriver.common.action_chains import ActionChains
-        from selenium.webdriver.common.by import By
-    except ImportError: 
-        setup()
-        from selenium.webdriver.common.action_chains import ActionChains
-        from selenium.webdriver.common.by import By
-
-
-    options_url = "" # Microstrategy URL
-    export_url = '' # Microstrategy URL
-    driver.get(options_url)
-    sleep(3)
-    driver.get(export_url)
-
-    export_option_xpath = '//*[@id="exportShowOptions"]'
-    export_element = driver.find_element(By.XPATH, export_option_xpath)
-    ActionChains(driver).move_to_element(export_element).perform() # type: ignore
-
-    checked_export = export_element.is_selected()
-
-    if checked_export:
-        print('Restoring Export options')
-        export_element.click()
-        driver.find_element(By.XPATH, '//*[@id="25003"]').click()
 
 def decide_we_sat(date_obj: date) -> date:
     from dateutil.relativedelta import relativedelta, SA
@@ -179,49 +120,6 @@ def decide_fm(date_obj: date, return_date='month') -> date:
     return date_obj
     
 
-# takes in a date and decides what the beginning day of the fiscal month is
-def decide_fm_beginning(date_obj: date) -> date:
-    try: 
-        from dateutil.relativedelta import relativedelta
-    except ImportError:
-        setup()
-        from dateutil.relativedelta import relativedelta
-
-
-    def isleap(year: int) -> bool:
-        # Return True for leap years, False for non-leap years.
-        return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
-
-    year = date_obj.year
-    month = (date_obj + relativedelta(months=-1)).month
-    day = 29
-
-    if date_obj.month == 1:
-        year = year - 1
-    elif (isleap(date_obj.year) == False) and (date_obj.month == 3):
-        month = date_obj.month
-        day = 1
-
-    date_obj = date_obj.replace(year=year, month=month, day=day)
-    return date_obj
-
-# takes in a date and decides what the end of the fiscal month is
-def decide_fm_end(date_obj: date) -> date:
-
-    year = date_obj.year
-    month = date_obj.month
-    day = 28
-
-    if (month == 12) and (date_obj.day > 28):
-        year = date_obj.year + 1
-        month = 1
-    elif date_obj.day > 28:
-        month = date_obj.month + 1
-
-    date_obj = date_obj.replace(year=year, month=month, day=day)
-    return date_obj
-
-
 def download_reports(driver: WebDriver, mstr_url: str, download_file: str, export_type='excel', download_folder=os.path.join(Path.home(), 'Downloads'), timeout=120, **kwargs) -> None:
     import os
     from time import sleep
@@ -245,6 +143,42 @@ def download_reports(driver: WebDriver, mstr_url: str, download_file: str, expor
         from selenium.common.exceptions import TimeoutException
         from dateutil.relativedelta import relativedelta
     
+    def correct_export_options(driver: WebDriver):
+        options_url = "" # Microstrategy URL
+        export_url = '' # Microstrategy URL
+        driver.get(options_url)
+        sleep(3)
+        driver.get(export_url)
+
+        export_option_xpath = '//*[@id="exportShowOptions"]'
+        export_element = driver.find_element(By.XPATH, export_option_xpath)
+        ActionChains(driver).move_to_element(export_element).perform() # type: ignore
+
+        checked_export = export_element.is_selected()
+
+        if checked_export is False:
+            print('Correcting Export options')
+            export_element.click()
+            driver.find_element(By.XPATH, '//*[@id="25003"]').click()
+
+    def restore_export_options(driver: WebDriver):
+        options_url = "" # Microstrategy URL
+        export_url = '' # Microstrategy URL
+        driver.get(options_url)
+        sleep(3)
+        driver.get(export_url)
+
+        export_option_xpath = '//*[@id="exportShowOptions"]'
+        export_element = driver.find_element(By.XPATH, export_option_xpath)
+        ActionChains(driver).move_to_element(export_element).perform() # type: ignore
+
+        checked_export = export_element.is_selected()
+
+        if checked_export:
+            print('Restoring Export options')
+            export_element.click()
+            driver.find_element(By.XPATH, '//*[@id="25003"]').click()
+
     
     def answer_prompts_fm(fiscal_month:date, months:int) -> None:
         """
@@ -390,31 +324,19 @@ def download_reports(driver: WebDriver, mstr_url: str, download_file: str, expor
     yesterday = date.today() - relativedelta(days=1)
 
     if prompt == 'fm':
-        if 'fiscal_month' not in kwargs:
-            kwargs['fiscal_month'] = decide_fm(yesterday) # setting default fiscal month to yesterday's fiscal
-        elif type(kwargs.get('fiscal_month')) != date:
+        if type(kwargs.get('fiscal_month')) != date:
             raise TypeError('fiscal_month argument must be of date type')
-        if 'months' not in kwargs:
-            kwargs['months'] = 1 # setting default amount of months to pull to one
-        elif type(kwargs.get('months')) != int:
+        if type(kwargs.get('months')) != int:
             raise TypeError('months argument must be of int type')
     elif prompt == 'we':
-        if 'week_end' not in kwargs:
-            kwargs['week_end'] = decide_we_sat(yesterday - relativedelta(weeks=1)) # setting default week end to last completed week
-        elif type(kwargs.get('week_end')) != date:
+        if type(kwargs.get('week_end')) != date:
             raise TypeError('weekend argument must be of date type')
-        if 'weeks' not in kwargs:
-            kwargs['weeks'] = 1 # default number of weeks to pull is 1
-        elif type(kwargs.get('weeks')) != int:
+        if type(kwargs.get('weeks')) != int:
             raise TypeError('weeks argument must be of int type')
     if prompt == 'fy':
-        if 'fiscal_year' not in kwargs:
-            kwargs['fiscal_year'] = decide_fm(yesterday).year # setting default fiscal month to yesterday's fiscal
-        elif type(kwargs.get('fiscal_year')) != int:
+        if type(kwargs.get('fiscal_year')) != int:
             raise TypeError('fiscal_year argument must be of int type')
-        if 'years' not in kwargs:
-            kwargs['years'] = 1 # setting default amount of months to pull to one
-        elif type(kwargs.get('years')) != int:
+        if type(kwargs.get('years')) != int:
             raise TypeError('years argument must be of int type')
 
     # looping through the dataframe and pulling data from Mstr
@@ -438,16 +360,16 @@ def download_reports(driver: WebDriver, mstr_url: str, download_file: str, expor
     driver.find_element(By.XPATH, report_run_xpath).click()
 
     if prompt == 'fm':
-        fiscal_month = kwargs['fiscal_month']
-        months = kwargs['months']
+        fiscal_month = kwargs.get('fiscal_month', decide_fm(yesterday))
+        months = kwargs.get('months', 1)
         answer_prompts_fm(fiscal_month, months)
     elif prompt == 'we':
-        week_end = kwargs['week_end']
-        weeks = kwargs['weeks']
+        week_end = kwargs.get('week_end', decide_we_sat(yesterday - relativedelta(weeks=1)))
+        weeks = kwargs.get('weeks', 1)
         answer_prompts_we(week_end, weeks)
     elif prompt == 'fy':
-        fiscal_year = kwargs['fiscal_year']
-        years = kwargs['years']
+        fiscal_year = kwargs.get('fiscal_year', decide_fm(yesterday).year)
+        years = kwargs.get('years', 1)
         answer_prompts_year(fiscal_year, years)
 
     WebDriverWait(driver, 10).until(EC.element_to_be_clickable(driver.find_element(By.XPATH, report_run_xpath)))
